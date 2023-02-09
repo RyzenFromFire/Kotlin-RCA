@@ -1,3 +1,4 @@
+import kotlin.math.max
 import kotlin.math.pow
 
 /*
@@ -58,7 +59,7 @@ open class BitVector(var content: String = "", length: Int = content.length) {
         content = arr.joinToString("")
     }
 
-    inner class BoolBitVector(var boolArr: BooleanArray = toBoolArray()) {
+    inner class BoolBitVector(var boolArr: BooleanArray = this.toBoolArray()) {
         override fun toString(): String {
             var str = "[ "
             for (b in boolArr) str += "$b "
@@ -81,6 +82,8 @@ open class BitVector(var content: String = "", length: Int = content.length) {
         operator fun set(index: Int, value: Boolean) {
             boolArr[index] = value;
         }
+        val length: Int
+            get() { return boolArr.size }
     }
 
     private fun toBoolArray(): BooleanArray {
@@ -91,7 +94,7 @@ open class BitVector(var content: String = "", length: Int = content.length) {
         return result
     }
 
-    fun getBoolBitVector(): BoolBitVector {
+    fun toBoolBitVector(): BoolBitVector {
         return BoolBitVector()
     }
 
@@ -134,14 +137,17 @@ class SignedBitVector(content: String = "",
     }
 }
 
-class RippleCarryAdder(var length: Int, carryIn: Boolean = false) {
+class RippleCarryAdder(var augend: BitVector = BitVector("0"),
+                       var addend: BitVector = BitVector("0"),
+                       carryIn: Boolean = false) {
+    private var length = max(augend.length, addend.length)
     private var carry = carryIn
-    var sum = BitVector.zeroes(length).getBoolBitVector()
+    private var sum = BitVector.zeroes(length).toBoolBitVector()
     private var a = false
     private var b = false
-    fun add(augend: BitVector, addend: BitVector): BitVector {
-        val augend2 = augend.getBoolBitVector().reversed()
-        val addend2 = addend.getBoolBitVector().reversed()
+    fun add(): BitVector {
+        val augend2 = augend.toBoolBitVector().reversed()
+        val addend2 = addend.toBoolBitVector().reversed()
         for (i in 0 until length) {
             a = augend2[i]
             b = addend2[i]
@@ -152,21 +158,67 @@ class RippleCarryAdder(var length: Int, carryIn: Boolean = false) {
     }
     val carryOut: Boolean
         get() { return carry }
+    fun getSum(): BitVector {
+        return sum.toBitVector()
+    }
+}
+
+class MultiplyAccumulate(var multiplier: BitVector = BitVector("0"),
+                         var multiplicand: BitVector = BitVector("0")) {
+    private var mr = multiplier.toBoolBitVector()
+    private var md = multiplicand.toBoolBitVector()
+    private var product = BitVector.zeroes(multiplier.length + multiplicand.length)
+    fun multiply(): BitVector {
+        for (shamt in 0 until mr.length) {
+            if (mr.reversed()[shamt]) { // Add shifted multiplier
+                val shiftedMd = shift(multiplicand, shamt).padTo(product.length)
+                product = RippleCarryAdder(product, shiftedMd).add()
+            }
+        }
+        return product
+    }
+
+    fun shift(bv: BitVector, shamt: Int): BitVector {
+        var newContent = bv.content
+        for (i in 0 until shamt)
+            newContent += "0"
+        return BitVector(newContent)
+    }
 }
 
 fun main(args : Array<String>) {
     val augend = if (args[0].isNotEmpty()) BitVector(args[0]) else BitVector("10001")
-    val addend = try { BitVector(args[1]) } catch(e: IndexOutOfBoundsException) { BitVector("0001") }
+    val addend = try { BitVector(args[1]) } catch(e: IndexOutOfBoundsException) { BitVector("0010") }
 
     // Whichever is smaller will be zero-padded to the length of the larger
     augend.padTo(addend.length)
     addend.padTo(augend.length)
 
+    println("Processing as Unsigned Integers:")
+
     println("Addend 1: ${augend.toDecimal()}_10 = ${augend.content}_2")
     println("Addend 2: ${addend.toDecimal()}_10 = ${addend.content}_2")
 
     // both lengths are the same now, so it doesn't matter which one is used
-    val rca = RippleCarryAdder(augend.length)
-    val sum = rca.add(augend, addend)
+    val rca = RippleCarryAdder(augend, addend)
+    val sum = rca.add()
     println("Sum: ${sum.toDecimal()}_10 = ${sum.content}_2")
+
+    println("Processing as Signed Two's Complement Integers:")
+
+    val augend2 = SignedBitVector(augend).extend()
+    val addend2 = SignedBitVector(addend).extend()
+
+    println("Sign extending...")
+    println("Addend 1: ${augend2.toDecimal()}_10 = ${augend2.content}_2")
+    println("Addend 2: ${addend2.toDecimal()}_10 = ${addend2.content}_2")
+
+    val sum2 = SignedBitVector(RippleCarryAdder(augend2, addend2).add())
+    println("Sum: ${sum2.toDecimal()}_10 = ${sum2.content}_2")
+
+    println("Multiplying as Unsigned Integers:")
+    val mac = MultiplyAccumulate(augend, addend)
+    val product = mac.multiply()
+    println("Base 10: ${augend.toDecimal()} * ${addend.toDecimal()} = ${product.toDecimal()}")
+    println("Base 2: ${augend.content} * ${addend.content} = ${product.content}")
 }
