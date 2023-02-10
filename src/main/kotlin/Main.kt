@@ -161,6 +161,11 @@ class RippleCarryAdder(var augend: BitVector = BitVector("0"),
     fun getSum(): BitVector {
         return sum.toBitVector()
     }
+    fun getExtendedSum(): BitVector {
+        var result = getSum().padWith(1)
+        if (carryOut) result[0] = '1'
+        return result
+    }
 }
 
 class MultiplyAccumulate(var multiplier: BitVector = BitVector("0"),
@@ -187,8 +192,8 @@ class MultiplyAccumulate(var multiplier: BitVector = BitVector("0"),
 }
 
 fun main(args : Array<String>) {
-    val augend = if (args[0].isNotEmpty()) BitVector(args[0]) else BitVector("10001")
-    val addend = try { BitVector(args[1]) } catch(e: IndexOutOfBoundsException) { BitVector("0010") }
+    var augend = if (args[0].isNotEmpty()) BitVector(args[0]) else BitVector("10001")
+    var addend = try { BitVector(args[1]) } catch(e: IndexOutOfBoundsException) { BitVector("0010") }
 
     // Whichever is smaller will be zero-padded to the length of the larger
     augend.padTo(addend.length)
@@ -196,13 +201,16 @@ fun main(args : Array<String>) {
 
     println("Processing as Unsigned Integers:")
 
+    var rca = RippleCarryAdder(augend, addend)
     println("Addend 1: ${augend.toDecimal()}_10 = ${augend.content}_2")
     println("Addend 2: ${addend.toDecimal()}_10 = ${addend.content}_2")
-
-    // both lengths are the same now, so it doesn't matter which one is used
-    val rca = RippleCarryAdder(augend, addend)
-    val sum = rca.add()
+    var sum = rca.add()
     println("Sum: ${sum.toDecimal()}_10 = ${sum.content}_2")
+    if (rca.carryOut) {
+        println("Integer Overflow! Extending...")
+        sum = rca.getExtendedSum()
+        println("Extended Sum: ${sum.toDecimal()}_10 = ${sum.content}_2")
+    }
 
     println("Processing as Signed Two's Complement Integers:")
 
@@ -214,7 +222,12 @@ fun main(args : Array<String>) {
     println("Addend 2: ${addend2.toDecimal()}_10 = ${addend2.content}_2")
 
     val sum2 = SignedBitVector(RippleCarryAdder(augend2, addend2).add())
-    println("Sum: ${sum2.toDecimal()}_10 = ${sum2.content}_2")
+    println("Signed Sum: ${sum2.toDecimal()}_10 = ${sum2.content}_2")
+    if (rca.carryOut) {
+        println("Integer Overflow! Extending...")
+        sum = rca.getExtendedSum()
+        println("Extended Signed Sum: ${sum.toDecimal()}_10 = ${sum.content}_2")
+    }
 
     println("Multiplying as Unsigned Integers:")
     val mac = MultiplyAccumulate(augend, addend)
